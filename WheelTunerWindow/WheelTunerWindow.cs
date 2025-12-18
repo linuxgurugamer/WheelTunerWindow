@@ -1,11 +1,13 @@
-﻿using System;
+﻿using ClickThroughFix;
+using KSP.UI.Screens;
+using ModuleWheels;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using ToolbarControl_NS;
 using UnityEngine;
-using KSP.UI.Screens;
-using ModuleWheels;
 
 // WheelTunerWindow.cs (clean, no duplicate methods)
 // KSP 1.12.5 runtime wheel tuning window with:
@@ -65,9 +67,6 @@ namespace WheelTunerWindow
         private string _mmPatchText = "";
 
         // AppLauncher
-        private ApplicationLauncherButton _appButton;
-        private Texture2D _appIcon;
-        private bool _applauncherWanted = true;
 
         // UI parsing + temp state
         private static readonly CultureInfo CI = CultureInfo.InvariantCulture;
@@ -81,14 +80,12 @@ namespace WheelTunerWindow
 
         public void Start()
         {
+            InitToolbar();
             RefreshWheelList();
-            TryCreateAppLauncherButton();
         }
 
         public void OnDestroy()
         {
-            DestroyAppLauncherButton();
-
             _tempStrings.Clear();
             _tempFloats.Clear();
             _expandedByPartId.Clear();
@@ -102,10 +99,6 @@ namespace WheelTunerWindow
             if ((Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)) && Input.GetKeyDown(KeyCode.W))
                 _visible = !_visible;
 
-            // AppLauncher may not be ready immediately
-            if (_applauncherWanted && _appButton == null)
-                TryCreateAppLauncherButton();
-
             // periodic refresh
             if (_autoRefreshList && Planetarium.GetUniversalTime() > _nextRefreshTime)
             {
@@ -117,7 +110,7 @@ namespace WheelTunerWindow
         public void OnGUI()
         {
             if (!_visible) return;
-            _windowRect = GUILayout.Window(_windowId, _windowRect, DrawWindow, "Wheel Tuner (KSP 1.12.5)");
+            _windowRect = ClickThruBlocker.GUILayoutWindow(_windowId, _windowRect, DrawWindow, "Wheel Tuner (KSP 1.12.5)");
         }
 
         // =========================
@@ -1095,50 +1088,40 @@ namespace WheelTunerWindow
             return p.name ?? "";
         }
 
+        static ToolbarControl toolbarControl = null;
+        internal const string MODID = "WheelTuner";
+        internal const string MODNAME = "Wheel Tuner";
+        private const string IconOnPath = "WheelTunerWindow/Icons/wheelTuner_on";
+        private const string IconOffPath = "WheelTunerWindow/Icons/wheelTuner_off";
+
+
         // =========================
         // AppLauncher
         // =========================
 
-        private void TryCreateAppLauncherButton()
+        private void InitToolbar()
         {
-            if (!_applauncherWanted) return;
-            if (_appButton != null) return;
-            if (ApplicationLauncher.Instance == null) return;
-            if (!ApplicationLauncher.Ready) return;
-
-            if (_appIcon == null)
-                _appIcon = CreateSimpleIcon();
-
             var scenes = ApplicationLauncher.AppScenes.FLIGHT |
                          ApplicationLauncher.AppScenes.VAB |
                          ApplicationLauncher.AppScenes.SPH;
 
-            _appButton = ApplicationLauncher.Instance.AddModApplication(
-                onTrue: () => _visible = true,
-                onFalse: () => _visible = false,
-                onHover: null,
-                onHoverOut: null,
-                onEnable: null,
-                onDisable: null,
-                visibleInScenes: scenes,
-                texture: _appIcon
-            );
-        }
-
-        private void DestroyAppLauncherButton()
-        {
-            if (_appButton != null && ApplicationLauncher.Instance != null)
+            if (toolbarControl == null)
             {
-                ApplicationLauncher.Instance.RemoveModApplication(_appButton);
-                _appButton = null;
+                toolbarControl = gameObject.AddComponent<ToolbarControl>();
+                toolbarControl.AddToAllToolbars(
+                    onTrue: () => { _visible = true; },
+                    onFalse: () => { _visible = false; },
+                    scenes,
+                    MODID,
+                    "WheelTuner",
+                    IconOnPath,
+                    IconOffPath,
+                    MODNAME);
             }
 
-            if (_appIcon != null)
-            {
-                Destroy(_appIcon);
-                _appIcon = null;
-            }
+
         }
+
 
         private Texture2D CreateSimpleIcon()
         {

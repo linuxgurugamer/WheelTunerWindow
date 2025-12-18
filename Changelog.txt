@@ -1,0 +1,10 @@
+Changelog
+
+0.0.1
+	Initial release
+
+0.0.1.1
+	Added support for ClickThroughBlocker
+	Added support for ToolbarController
+	Added AssemblyVersion.tt
+	Added toolbar icon
