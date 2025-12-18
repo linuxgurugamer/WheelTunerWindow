@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="buildRelease.bat" />
+    <File Path="deploy.bat" />
+    <File Path="Docs/KSP_Wheel_Modules_Complete_Reference_v3.docx" />
+    <File Path="jenkins.txt" />
+    <File Path="LICENSE.md" />
+    <File Path="README.md" />
+    <File Path="WheelTunerWindow.version" />
+  </Folder>
+  <Project Path="WheelTunerWindow/WheelTunerWindow.csproj" Id="1b3e3e6b-5fe8-4e9f-a344-a16434e19d66" />
+</Solution>
