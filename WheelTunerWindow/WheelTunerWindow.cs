@@ -36,7 +36,7 @@ namespace WheelTunerWindow
         public void OnDestroy() { if (_impl != null) Destroy(_impl); }
     }
 
-    public class WheelTunerWindow : MonoBehaviour
+    public partial class WheelTunerWindow : MonoBehaviour
     {
         private const string LogTag = "[WheelTuner] ";
 
@@ -74,9 +74,16 @@ namespace WheelTunerWindow
         private readonly Dictionary<int, Dictionary<string, string>> _tempStrings = new Dictionary<int, Dictionary<string, string>>();
         private readonly Dictionary<int, Dictionary<string, float>> _tempFloats = new Dictionary<int, Dictionary<string, float>>();
 
+        // Field Card window state
+        private bool _fieldCardVisible = false;
+        private Rect _fieldCardRect = new Rect(1020, 120, 420, 360);
+        private int _fieldCardWindowId;
+        private Vector2 _fieldCardScroll;
+
         public void Awake()
         {
             _windowId = (int)(DateTime.UtcNow.Ticks & 0x7FFFFFFF);
+            _fieldCardWindowId = _windowId ^ 0x1A2B3C4D; // stable-ish different id
         }
 
         public void Start()
@@ -112,6 +119,9 @@ namespace WheelTunerWindow
         {
             if (!_visible) return;
             _windowRect = ClickThruBlocker.GUILayoutWindow(_windowId, _windowRect, DrawWindow, "Wheel Tuner (KSP 1.12.5)");
+            if (_fieldCardVisible)
+                _fieldCardRect = GUILayout.Window(_fieldCardWindowId, _fieldCardRect, DrawFieldCardWindow, "Wheel Tuning Field Card");
+
         }
 
         // =========================
@@ -137,6 +147,7 @@ namespace WheelTunerWindow
             if (GUILayout.Button("Refresh Wheels", GUILayout.Width(130))) RefreshWheelList();
             _autoRefreshList = GUILayout.Toggle(_autoRefreshList, "Auto refresh list", GUILayout.Width(140));
             _applyToSymmetry = GUILayout.Toggle(_applyToSymmetry, "Apply to symmetry", GUILayout.Width(140));
+            _fieldCardVisible = GUILayout.Toggle(_fieldCardVisible, "Field Card", GUILayout.Width(90));
             _diagMode = GUILayout.Toggle(_diagMode, "Diagnostics (read-only)", GUILayout.Width(170));
 
             GUILayout.FlexibleSpace();
@@ -277,6 +288,12 @@ namespace WheelTunerWindow
 
             var dmg = p.FindModuleImplementing<ModuleWheelDamage>();
             if (dmg != null) DrawDamageSection(wb, dmg);
+
+            var bogey = wb.part.FindModuleImplementing<ModuleWheelBogey>();
+            if (bogey != null) DrawBogeySection(wb, bogey);
+
+            var lockMod = wb.part.FindModuleImplementing<ModuleWheelLock>();
+            if (lockMod != null) DrawLockSection(wb, lockMod);
         }
 
         // =========================
@@ -464,6 +481,192 @@ namespace WheelTunerWindow
             DrawEditableBoolOrReadonly(dmg, "repairable", "repairable");
 
             GUILayout.EndVertical();
+        }
+
+        private void DrawBogeySection(ModuleWheelBase wb, ModuleWheelBogey bogey)
+        {
+            GUILayout.Label("ModuleWheelBogey", BoldLabel());
+            GUILayout.BeginVertical("box");
+
+            // Generic reflection-based editor:
+            DrawGenericModuleEditor(bogey);
+
+            // Bogey changes often affect transforms/poses; rebuild helps in many cases
+            if (!_diagMode)
+            {
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("Apply (Bogey)", GUILayout.Width(140)))
+                {
+                    RebuildWheel(wb);
+                    ClearDirtyForPartAndSymmetry(wb.part);
+                }
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.EndVertical();
+        }
+
+        private void DrawLockSection(ModuleWheelBase wb, ModuleWheelLock lockMod)
+        {
+            GUILayout.Label("ModuleWheelLock", BoldLabel());
+            GUILayout.BeginVertical("box");
+
+            // Generic reflection editor (float/double/int/bool editable; others readonly/ignored)
+            DrawGenericModuleEditor(lockMod);
+
+            // Lock changes often affect transforms/constraints; rebuild helps
+            if (!_diagMode)
+            {
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("Apply (Lock)", GUILayout.Width(140)))
+                {
+                    RebuildWheel(wb);
+                    ClearDirtyForPartAndSymmetry(wb.part);
+                }
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.EndVertical();
+        }
+
+        private void DrawGenericModuleEditor(PartModule module)
+        {
+            if (module == null) return;
+
+            // Show type name for sanity (helps with mod variants/subclasses)
+            DrawReadonly("Module type", module.GetType().FullName);
+
+            // Properties first, then fields
+            DrawGenericProperties(module);
+            DrawGenericFields(module);
+        }
+
+        private void DrawGenericProperties(PartModule module)
+        {
+            var t = module.GetType();
+            var props = t.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                         .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
+                         .OrderBy(p => p.Name);
+
+            foreach (var p in props)
+            {
+                if (!IsSupportedEditableType(p.PropertyType))
+                {
+                    // show as readonly if simple-ish, otherwise skip noisy stuff
+                    if (IsSimpleDisplayType(p.PropertyType))
+                        DrawReadonly(p.Name, SafeToString(() => p.GetValue(module, null)));
+                    continue;
+                }
+
+                object valObj;
+                try { valObj = p.GetValue(module, null); }
+                catch { continue; }
+
+                DrawGenericValueEditor(module, p.Name, p.PropertyType, valObj);
+            }
+        }
+
+        private void DrawGenericFields(PartModule module)
+        {
+            var t = module.GetType();
+            var fields = t.GetFields(BindingFlags.Instance | BindingFlags.Public)
+                          .OrderBy(f => f.Name);
+
+            foreach (var f in fields)
+            {
+                if (!IsSupportedEditableType(f.FieldType))
+                {
+                    if (IsSimpleDisplayType(f.FieldType))
+                        DrawReadonly(f.Name, SafeToString(() => f.GetValue(module)));
+                    continue;
+                }
+
+                object valObj;
+                try { valObj = f.GetValue(module); }
+                catch { continue; }
+
+                DrawGenericValueEditor(module, f.Name, f.FieldType, valObj);
+            }
+        }
+
+        private void DrawGenericValueEditor(object moduleObj, string name, Type type, object currentValue)
+        {
+            if (_diagMode)
+            {
+                DrawReadonly(name, currentValue != null ? currentValue.ToString() : "(null)");
+                return;
+            }
+
+            // bool
+            if (type == typeof(bool))
+            {
+                bool cur = currentValue != null && (bool)currentValue;
+                bool next = GUILayout.Toggle(cur, name);
+                if (next != cur) SetValue(moduleObj, name, next);
+                return;
+            }
+
+            // int
+            if (type == typeof(int))
+            {
+                int cur = currentValue != null ? (int)currentValue : 0;
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(name, GUILayout.Width(200));
+
+                string key = moduleObj.GetHashCode() + ":" + name + ":int";
+                string txt = GetTempString(moduleObj, key, cur.ToString(CI));
+                string newTxt = GUILayout.TextField(txt, GUILayout.Width(90));
+                if (newTxt != txt) SetTempString(moduleObj, key, newTxt);
+
+                if (int.TryParse(newTxt, NumberStyles.Integer, CI, out int parsed) && parsed != cur)
+                    SetValue(moduleObj, name, parsed);
+
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+                return;
+            }
+
+            // float/double
+            if (type == typeof(float) || type == typeof(double))
+            {
+                float cur = 0f;
+                try { cur = Convert.ToSingle(currentValue, CI); } catch { }
+
+                // Generic range for unknown bogey fields:
+                // Use a wide-ish range and allow precise text entry.
+                // If you later decide specific fields/ranges, you can special-case by name.
+                DrawEditableFloat(moduleObj, name, name, -1000f, 1000f);
+                return;
+            }
+
+            // fallback display
+            DrawReadonly(name, currentValue != null ? currentValue.ToString() : "(null)");
+        }
+
+        private bool IsSupportedEditableType(Type t)
+        {
+            return t == typeof(float) || t == typeof(double) || t == typeof(int) || t == typeof(bool);
+        }
+
+        private bool IsSimpleDisplayType(Type t)
+        {
+            return t == typeof(string) || t.IsEnum || IsSupportedEditableType(t);
+        }
+
+        private string SafeToString(Func<object> getter)
+        {
+            try
+            {
+                var o = getter();
+                return o == null ? "(null)" : o.ToString();
+            }
+            catch
+            {
+                return "(unreadable)";
+            }
         }
 
         // =========================
@@ -673,7 +876,7 @@ namespace WheelTunerWindow
         // Read-only / editable controls
         // =========================
 
-        private GUIStyle BoldLabel()
+        internal GUIStyle BoldLabel()
         {
             var s = new GUIStyle(GUI.skin.label);
             s.fontStyle = FontStyle.Bold;
@@ -713,6 +916,9 @@ namespace WheelTunerWindow
             DrawEditableFloat(module, key, label, min, max);
         }
 
+        private string _lastFocusedControl = "";
+        private readonly HashSet<string> _dirtyTextControls = new HashSet<string>();
+
         // Fixed float editor (slider/+/- work; textbox no longer overrides slider changes)
         private void DrawEditableFloat(object module, string key, string label, float min, float max)
         {
@@ -721,11 +927,22 @@ namespace WheelTunerWindow
             GUILayout.BeginHorizontal();
             GUILayout.Label(label, GUILayout.Width(200));
 
-            string textKey = module.GetHashCode() + ":" + key + ":text";
-            string txt = GetTempString(module, textKey, current.ToString("0.###", CI));
-            string newTxt = GUILayout.TextField(txt, GUILayout.Width(90));
-            if (newTxt != txt) SetTempString(module, textKey, newTxt);
+            // Unique control name per field
+            string ctrlName = module.GetHashCode() + ":" + key + ":tf";
+            GUI.SetNextControlName(ctrlName);
 
+            // IMPORTANT: use higher precision so we don’t “drift” values by formatting
+            string textKey = module.GetHashCode() + ":" + key + ":text";
+            string txt = GetTempString(module, textKey, current.ToString("G9", CI));
+            string newTxt = GUILayout.TextField(txt, GUILayout.Width(90));
+
+            if (newTxt != txt)
+            {
+                SetTempString(module, textKey, newTxt);
+                _dirtyTextControls.Add(ctrlName); // user has actually typed
+            }
+
+            // Slider
             float currentClamped = Mathf.Clamp(current, min, max);
             float newSlider = GUILayout.HorizontalSlider(currentClamped, min, max, GUILayout.Width(240));
 
@@ -739,22 +956,40 @@ namespace WheelTunerWindow
             GUILayout.Label(current.ToString("0.###", CI), GUILayout.Width(80));
             GUILayout.EndHorizontal();
 
+            // If slider/buttons changed, apply immediately and sync textbox
             bool sliderChanged = !NearlyEqual(newSlider, currentClamped) || minus || plus;
             if (sliderChanged)
             {
                 if (!NearlyEqual(newSlider, current))
                     SetValue(module, key, newSlider);
 
-                SetTempString(module, textKey, newSlider.ToString("0.###", CI));
+                SetTempString(module, textKey, newSlider.ToString("G9", CI));
+                _dirtyTextControls.Remove(ctrlName);
                 return;
             }
 
-            if (TryParseFloat(newTxt, out float parsed))
+            // Commit textbox only when user typed AND pressed Enter OR focus changed away
+            string focused = GUI.GetNameOfFocusedControl();
+            bool enterPressed = (Event.current.type == EventType.KeyDown) &&
+                                (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter);
+
+            bool lostFocus = (_lastFocusedControl == ctrlName && focused != ctrlName);
+
+            if (_dirtyTextControls.Contains(ctrlName) && (enterPressed || lostFocus))
             {
-                parsed = Mathf.Clamp(parsed, min, max);
-                if (!NearlyEqual(parsed, current))
-                    SetValue(module, key, parsed);
+                if (TryParseFloat(GetTempString(module, textKey, ""), out float parsed))
+                {
+                    parsed = Mathf.Clamp(parsed, min, max);
+                    if (!NearlyEqual(parsed, current))
+                        SetValue(module, key, parsed);
+
+                    SetTempString(module, textKey, parsed.ToString("G9", CI));
+                }
+
+                _dirtyTextControls.Remove(ctrlName);
             }
+
+            _lastFocusedControl = focused;
         }
 
         private float LabeledSlider(string label, float value, float min, float max)
@@ -985,6 +1220,18 @@ namespace WheelTunerWindow
                     if (dmg != null)
                         AppendModuleBlock(sb, "ModuleWheelDamage", new[] { FieldLine(dmg, "stressTolerance"), FieldLine(dmg, "impactTolerance"), FieldLine(dmg, "repairable") });
 
+                    var bogey = p.FindModuleImplementing<ModuleWheelBogey>();
+                    if (bogey != null)
+                    {
+                        // If you want: explicit known fields, OR generic export of float/bool/int props+fields.
+                        // The generic export is safest because it matches what your UI exposes.
+                        AppendModuleBlock(sb, "ModuleWheelBogey", BuildGenericModuleExportLines(bogey));
+                    }
+
+                    var lockMod = p.FindModuleImplementing<ModuleWheelLock>();
+                    if (lockMod != null)
+                        AppendModuleBlock(sb, "ModuleWheelLock", BuildGenericModuleExportLines(lockMod));
+
                     sb.AppendLine("}");
                     sb.AppendLine();
                 }
@@ -995,6 +1242,69 @@ namespace WheelTunerWindow
             {
                 return "// Patch generation failed:\n// " + ex + "\n";
             }
+        }
+
+        private IEnumerable<string> BuildGenericModuleExportLines(PartModule module)
+        {
+            // Exports *public* scalar/bool values from BOTH properties and fields.
+            // Skips indexers and non-supported types.
+            if (module == null) yield break;
+
+            var t = module.GetType();
+
+            // Properties (public instance)
+            foreach (var p in t.GetProperties(BindingFlags.Instance | BindingFlags.Public).OrderBy(x => x.Name))
+            {
+                if (!p.CanRead) continue;
+                if (!p.CanWrite) continue;                  // MM patch should only set writable things
+                if (p.GetIndexParameters().Length != 0) continue;
+
+                var pt = p.PropertyType;
+                if (!IsSupportedEditableType(pt)) continue;
+
+                object val;
+                try { val = p.GetValue(module, null); }
+                catch { continue; }
+
+                var line = FieldLineFromType(p.Name, pt, val);
+                if (!string.IsNullOrEmpty(line)) yield return line;
+            }
+
+            // Fields (public instance)
+            foreach (var f in t.GetFields(BindingFlags.Instance | BindingFlags.Public).OrderBy(x => x.Name))
+            {
+                var ft = f.FieldType;
+                if (!IsSupportedEditableType(ft)) continue;
+
+                object val;
+                try { val = f.GetValue(module); }
+                catch { continue; }
+
+                var line = FieldLineFromType(f.Name, ft, val);
+                if (!string.IsNullOrEmpty(line)) yield return line;
+            }
+        }
+
+        private string FieldLineFromType(string fieldName, Type type, object val)
+        {
+            if (val == null) return null;
+
+            if (type == typeof(float))
+                return $"@{fieldName} = {Convert.ToSingle(val, CI).ToString("0.###", CI)}";
+
+            if (type == typeof(double))
+                return $"@{fieldName} = {Convert.ToDouble(val, CI).ToString("0.###", CI)}";
+
+            if (type == typeof(int))
+                return $"@{fieldName} = {Convert.ToInt32(val, CI)}";
+
+            if (type == typeof(bool))
+                return $"@{fieldName} = {(Convert.ToBoolean(val, CI) ? "true" : "false")}";
+
+            if (type.IsEnum)
+                return $"@{fieldName} = {val}";
+
+            return null;
         }
 
         private void AppendModuleBlock(System.Text.StringBuilder sb, string moduleName, IEnumerable<string> chunks)

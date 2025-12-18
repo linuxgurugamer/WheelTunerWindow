@@ -53,6 +53,8 @@ Wheel Tuner looks for parts containing ModuleWheelBase, and then shows associate
 - ModuleWheelBrakes
 - ModuleWheelDeployment
 - ModuleWheelDamage
+- ModuleWheelBogey
+- ModuleWheelLock
 
 Note: Some fields may not be exposed as public members depending on the module/build. If a field
 cannot be read/written via reflection, it may show default/unchanged behavior.

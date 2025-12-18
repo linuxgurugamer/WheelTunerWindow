@@ -8,3 +8,10 @@ Changelog
 	Added support for ToolbarController
 	Added AssemblyVersion.tt
 	Added toolbar icon
+
+0.0.1.2
+	Added support for ModuleWheelBogey
+	Added support for ModuleWheelLock
+	Updated reference document
+	Added reference card window
+	Fixed issue with suspension getting frozen when opening settings for a part

@@ -37,7 +37,7 @@
 3:WheelTunerWindow.version,GameData/WheelTunerWindow
 3:LICENSE.md,GameData/WheelTunerWindow
 3:README.md,GameData/WheelTunerWindow
-3:Docs/KSP_Wheel_Modules_Complete_Reference_v3.pdf,GameData/WheelTunerWindow
+3:Docs/KSP_Wheel_Modules_Single_Complete_Reference.pdf,GameData/WheelTunerWindow
 
 # 4:SOURCDIR, DESTDIR
 #4:Textures,GameData/ManeuverQueue/Textures
