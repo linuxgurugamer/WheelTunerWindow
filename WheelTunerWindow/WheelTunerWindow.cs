@@ -1,4 +1,12 @@
-﻿using ClickThroughFix;
+﻿// WheelTunerWindow.cs (clean, no duplicate methods)
+// KSP 1.12.5 runtime wheel tuning window with:
+// - Toolbar button (Editor + Flight)
+// - Dirty flag per part + Apply-to-symmetry propagation
+// - Read-only diagnostics mode (no edits)
+// - Export ModuleManager patch + display + copy to clipboard
+//
+
+using ClickThroughFix;
 using KSP.UI.Screens;
 using ModuleWheels;
 using System;
@@ -9,13 +17,6 @@ using System.Reflection;
 using ToolbarControl_NS;
 using UnityEngine;
 
-// WheelTunerWindow.cs (clean, no duplicate methods)
-// KSP 1.12.5 runtime wheel tuning window with:
-// - AppLauncher button (Editor + Flight)
-// - Dirty flag per part + Apply-to-symmetry propagation
-// - Read-only diagnostics mode (no edits)
-// - Export ModuleManager patch + display + copy to clipboard
-//
 
 namespace WheelTunerWindow
 {
