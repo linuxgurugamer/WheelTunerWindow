@@ -9,8 +9,6 @@ rem    but not always
 
 set H=%KSPDIR%
 
-set H=R:\KSP\KSP_1.12.5-Blueshift
-
 set GAMEDIR=WheelTunerWindow
 set GAMEDATA="GameData"
 set VERSIONFILE=%GAMEDIR%.version
